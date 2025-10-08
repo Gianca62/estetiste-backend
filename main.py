@@ -6,6 +6,7 @@ from typing import List, Optional
 import os
 from passlib.context import CryptContext
 from jose import JWTError, jwt
+from sqlalchemy import func
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 import pandas as pd
