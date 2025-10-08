@@ -17,21 +17,13 @@ from models import (
     SessionLocal, create_db_and_tables
 )
 
-# Configurazione e inizializzazione
+# Configurazione di logging
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Istanza di FastAPI
 app = FastAPI(title="Estetiste API")
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/")
-async def read_root():
-    return {"message": "Hello from estetiste-api"}
-
-@app.get("/test")
-async def test_endpoint():
-    return {"status": "API is working"}
-# Inizializzazione del database
-database_initialized = False
 
 # Middleware CORS
 origins = ["*"]
@@ -55,8 +47,12 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
+def get_password_hash(password: str):
+    # Converti in byte UTF-8 e verifica la lunghezza
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]  # Troncamento manuale
+    return pwd_context.hash(password_bytes.decode('utf-8'))
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -97,17 +93,25 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
 # Endpoint di autenticazione
 @app.post("/register", response_model=dict, tags=["Auth"])
 def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(DBUser).filter(DBUser.email == user_data.email).first()
-    if db_user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email già registrata")
-    hashed_password = get_password_hash(user_data.password)
-    db_user = DBUser(email=user_data.email, hashed_password=hashed_password)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"user_id": db_user.id, "email": db_user.email}, expires_delta=access_token_expires)
-    return {"access_token": access_token, "token_type": "bearer"}
+    logger.info(f"Registering user: {user_data.email}")
+    try:
+        db_user = db.query(DBUser).filter(DBUser.email == user_data.email).first()
+        if db_user:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email già registrata")
+        hashed_password = get_password_hash(user_data.password)
+        db_user = DBUser(email=user_data.email, hashed_password=hashed_password)
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(data={"user_id": db_user.id, "email": db_user.email}, expires_delta=access_token_expires)
+        return {"access_token": access_token, "token_type": "bearer"}
+    except HTTPException as http_exc:
+        logger.error(f"HTTP Exception: {str(http_exc)}")
+        raise
+    except Exception as e:
+        logger.error(f"Error in register: {str(e)}")
+        raise HTTPException(status_code=500, detail="Errore interno del server")
 
 @app.post("/token", tags=["Auth"])
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -249,3 +253,12 @@ def export_transactions_csv(db: Session = Depends(get_db), current_user: DBUser 
     df.to_csv(csv_output, index=False, sep=';', encoding='utf-8')
     csv_content = csv_output.getvalue()
     return Response(content=csv_content, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=transactions.csv", "Content-Type": "text/csv; charset=utf-8"})
+
+# Inizializzazione del database
+database_initialized = False
+@app.on_event("startup")
+async def startup_event():
+    global database_initialized
+    if not database_initialized:
+        create_db_and_tables()
+        database_initialized = True
