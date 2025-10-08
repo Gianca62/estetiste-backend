@@ -200,7 +200,7 @@ def get_monthly_stats(year: int = None, month: int = None, db: Session = Depends
     if year is None or month is None:
         total_appointments = db.query(DBAppointment).filter(DBAppointment.user_id == current_user.id).count()
         total_transactions = db.query(DBTransaction).filter(DBTransaction.user_id == current_user.id).count()
-        total_revenue = db.query(DBTransaction).filter(DBTransaction.user_id == current_user.id).with_entities(db.func.sum(DBTransaction.amount)).scalar() or 0
+        total_revenue = db.query(DBTransaction).filter(DBTransaction.user_id == current_user.id).with_entities(func.sum(DBTransaction.amount)).scalar() or 0
         return {
             "total_appointments": total_appointments,
             "total_transactions": total_transactions,
