@@ -19,7 +19,17 @@ from models import (
 
 # Configurazione e inizializzazione
 app = FastAPI(title="Estetiste API")
+from fastapi import FastAPI
 
+app = FastAPI()
+
+@app.get("/")
+async def read_root():
+    return {"message": "Hello from estetiste-api"}
+
+@app.get("/test")
+async def test_endpoint():
+    return {"status": "API is working"}
 # Inizializzazione del database
 database_initialized = False
 
